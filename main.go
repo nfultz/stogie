@@ -2,9 +2,9 @@ package main
 
 import (
 	"flag"
-	"fmt"
     "log"
 	"github.com/nfultz/stogie/version"
+    "container/list"
 )
 
 
@@ -44,6 +44,8 @@ type stogieFlags struct {
 var flagvar stogieFlags
 
 
+var adds, dels = list.New(), list.New()
+
 func main() {
 
 
@@ -70,11 +72,7 @@ func main() {
     flagvar.stowpkgs = flag.Args()
 
 	if flagvar.version {
-		fmt.Println("Build Date:", version.BuildDate)
-        fmt.Println("Git Commit:", version.GitCommit)
-        fmt.Println("Version:", version.Version)
-        fmt.Println("Go Version:", version.GoVersion)
-        fmt.Println("OS / Arch:", version.OsArch)
+        version.PrintVersion()
 		return
 	}
 
@@ -84,7 +82,7 @@ func main() {
     }
 
     toadd, todel := true, false
-    for i, s := range flagvar.stowpkgs {
+    for _, s := range flagvar.stowpkgs {
         switch s {
         case "-S":
             toadd, todel = true, false
@@ -94,13 +92,21 @@ func main() {
             toadd, todel = true, true
         default:
             if todel {
-                fmt.Printf("DEL %d\t%s\n", i, s)
+                dels.PushBack(s)
             }
             if toadd {
-                fmt.Printf("ADD %d\t%s\n", i, s)
+                adds.PushBack(s)
             }
 
         }
     }
 
+    for e := dels.Front(); e != nil; e = e.Next() {
+        // do something with e.Value
+        log.Printf("Del \t%s\n", e.Value)
+    }
+    for e := adds.Front(); e != nil; e = e.Next() {
+        // do something with e.Value
+        log.Printf("ADD \t%s\n", e.Value)
+    }
 }
