@@ -57,7 +57,7 @@ func main() {
     flag.IntVar(&flagvar.verbose, "verbose", 0, "Set verbosity level: 0, 1, 2, 3, and 4; 0 is the default.")
 
 	flag.StringVar(&flagvar.dir, "d",".", "Set stow dir (default is current dir)")
-	flag.StringVar(&flagvar.target, "t","..", "Set target dir (default is parent of stow dir)")
+	flag.StringVar(&flagvar.target, "t","", "Set target dir (default is parent of stow dir)")
 
 	flag.BoolVar(&flagvar.adopt, "adopt", false, "(Use with care) Import existing files into stow package from target")
 
@@ -83,8 +83,24 @@ func main() {
         return
     }
 
+    toadd, todel := true, false
     for i, s := range flagvar.stowpkgs {
-        fmt.Printf("%d\t%s\n", i, s)
+        switch s {
+        case "-S":
+            toadd, todel = true, false
+        case "-D":
+            toadd, todel = false, true
+        case "-R":
+            toadd, todel = true, true
+        default:
+            if todel {
+                fmt.Printf("DEL %d\t%s\n", i, s)
+            }
+            if toadd {
+                fmt.Printf("ADD %d\t%s\n", i, s)
+            }
+
+        }
     }
 
 }
