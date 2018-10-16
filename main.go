@@ -4,7 +4,10 @@ import (
 	"flag"
     "log"
 	"github.com/nfultz/stogie/version"
-    "container/list"
+    "os"
+ //   "path"
+    "path/filepath"
+	"strings"
 )
 
 
@@ -43,11 +46,29 @@ type stogieFlags struct {
 
 var flagvar stogieFlags
 
+type Task interface {
+    Print()
+    Run()
 
-var adds, dels = list.New(), list.New()
+}
+
+type LinkTask struct {
+    file string
+    target string
+}
+
+type UnlinkTask struct {
+    file string
+}
+
+
+
+
+
 
 func main() {
 
+    // Part 1 deal with flags
 
 	flag.BoolVar(&flagvar.version, "version", false, "Show version number")
     flag.BoolVar(&flagvar.help, "help",false, "Show this help")
@@ -81,6 +102,13 @@ func main() {
         return
     }
 
+	if flagvar.target == "" {
+		flagvar.target = filepath.Join(flagvar.dir, "..")
+
+	}
+
+    // part 1b - list of package verbs to two lists;
+    adds, dels := make([]string, 0, 100), make([]string, 0, 100)
     toadd, todel := true, false
     for _, s := range flagvar.stowpkgs {
         switch s {
@@ -92,21 +120,54 @@ func main() {
             toadd, todel = true, true
         default:
             if todel {
-                dels.PushBack(s)
+                dels = append(dels, s)
             }
             if toadd {
-                adds.PushBack(s)
+                adds = append(adds, s)
             }
 
         }
     }
 
-    for e := dels.Front(); e != nil; e = e.Next() {
+    tasks := make([]string, 0, 100)
+
+
+
+
+    for _, e := range dels{
         // do something with e.Value
-        log.Printf("Del \t%s\n", e.Value)
+        log.Printf("DEL \t%s\n", e)
     }
-    for e := adds.Front(); e != nil; e = e.Next() {
+    for _, e := range adds{
         // do something with e.Value
-        log.Printf("ADD \t%s\n", e.Value)
+        log.Printf("ADD \t%s\n", e)
     }
+
+
+
+    for _, e := range dels{
+        // do something with e.Value
+        log.Printf("->DEL \t%s\n", e)
+		pkgdir := filepath.Join(flagvar.dir, e)
+		filepath.Walk(pkgdir, func(path string, info os.FileInfo, err error) error {
+			if info.IsDir() {
+				return nil
+			}
+			path = strings.TrimPrefix(path, e)
+			target := filepath.Join(flagvar.target, path)
+			log.Printf("!!! %s %s",path, target)
+			fi, _ := os.Lstat(target)
+			if fi == nil || (fi.Mode() & os.ModeSymlink == 0) {
+				return nil
+			}
+			tasks = append(tasks, target)
+			return nil
+		})
+    }
+
+	for _, e := range tasks {
+		log.Printf("xDel %s", e)
+	}
+
+
 }
