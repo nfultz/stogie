@@ -5,7 +5,7 @@ import (
     "log"
 	"github.com/nfultz/stogie/version"
     "os"
- //   "path"
+    "path"
     "path/filepath"
 	"strings"
 )
@@ -14,11 +14,31 @@ import (
 
 func debug(level int, format string, args ...interface{}) {
     if flagvar.verbose >= level {
-        log.Printf(format, args)
+        log.Printf(format, args...)
     }
 
 
     return
+}
+
+func die(format string, args ...interface{}) {
+	log.Printf(format, args...)
+
+    os.Exit(1)
+}
+
+func fpabs(path string) string {
+	ret, _ := filepath.Abs(path)
+	return ret
+}
+
+func addDots(file string, link string) string {
+	debug(9, "adddots %s %s", file, link)
+	d,f := path.Split(file)
+	if d == "" {
+		return link
+	}
+    return addDots(f, filepath.Join("..", link) )
 }
 
 type stogieFlags struct {
@@ -48,12 +68,11 @@ var flagvar stogieFlags
 
 type Task interface {
     Print()
-    Run()
-
+	Run()
 }
 
 type LinkTask struct {
-    file string
+    link string
     target string
 }
 
@@ -62,9 +81,38 @@ type UnlinkTask struct {
 }
 
 
+type MkdirTask struct {
+    dir string
+}
 
+type AdoptTask struct {
+	pkg string
+    file string
+}
 
+func (t LinkTask) Print() {
+	debug(4, "ln -s %s %s", t.link, t.target)
+}
 
+func (t UnlinkTask) Print() {
+	debug(4, "rm %s", t.file)
+}
+
+func (t MkdirTask) Print() {
+	debug(4, "mkdir -p %s", t.dir)
+}
+
+func (t LinkTask) Run() {
+	os.Symlink(t.link, t.target)
+}
+
+func (t UnlinkTask) Run() {
+	os.Remove(t.file)
+}
+
+func (t MkdirTask) Run() {
+	os.Mkdir(t.dir, os.ModePerm)
+}
 
 func main() {
 
@@ -119,6 +167,11 @@ func main() {
         case "-R":
             toadd, todel = true, true
         default:
+
+			if !strings.HasSuffix(s, string(os.PathSeparator)) {
+               s = s + string(os.PathSeparator)
+			}
+
             if todel {
                 dels = append(dels, s)
             }
@@ -129,44 +182,101 @@ func main() {
         }
     }
 
-    tasks := make([]string, 0, 100)
 
 
 
 
     for _, e := range dels{
         // do something with e.Value
-        log.Printf("DEL \t%s\n", e)
+        debug(3, "DEL \t%s\n", e)
     }
     for _, e := range adds{
         // do something with e.Value
-        log.Printf("ADD \t%s\n", e)
+        debug(3, "ADD \t%s\n", e)
     }
 
+	stowDirRel := strings.TrimPrefix(fpabs(flagvar.dir), fpabs(flagvar.target) + string(os.PathSeparator))
+	debug(3, "Stowdir relative to target is (%s)", stowDirRel)
 
 
-    for _, e := range dels{
-        // do something with e.Value
-        log.Printf("->DEL \t%s\n", e)
-		pkgdir := filepath.Join(flagvar.dir, e)
+
+
+    tasks := make([]Task, 0)
+
+	// Plan unstow of each pkg
+    for _, pkg := range dels{
+		pkgdir := filepath.Join(flagvar.dir, pkg)
+		fi, _ := os.Lstat(pkgdir)
+		if fi == nil || ! fi.IsDir() {
+			die("The stow directory '%s' does not contain pkg '%s'.", flagvar.dir, pkg)
+		}
+
+		debug(2, "Planning unstow of %s", pkg)
 		filepath.Walk(pkgdir, func(path string, info os.FileInfo, err error) error {
 			if info.IsDir() {
 				return nil
 			}
-			path = strings.TrimPrefix(path, e)
-			target := filepath.Join(flagvar.target, path)
-			log.Printf("!!! %s %s",path, target)
-			fi, _ := os.Lstat(target)
-			if fi == nil || (fi.Mode() & os.ModeSymlink == 0) {
-				return nil
+
+			file := strings.TrimPrefix(path, pkg)
+			target := filepath.Join(flagvar.target, file)
+
+			rl, _ := os.Readlink(target)
+			debug(3, "**ReadLink:(%s) -> (%s)", target,  rl)
+
+
+			if rl == filepath.Join(stowDirRel, pkg, file ) {
+				debug(3, "**Queuing unlink task for %s", target)
+				tasks = append(tasks, UnlinkTask{file:target})
 			}
-			tasks = append(tasks, target)
+
 			return nil
 		})
+		debug(2, "Planning unstow of %s done", pkg)
+    }
+
+    for _, pkg := range adds {
+		pkgdir := filepath.Join(flagvar.dir, pkg)
+		fi, _ := os.Lstat(pkgdir)
+		if fi == nil || ! fi.IsDir() {
+			die("The stow directory '%s' does not contain pkg '%s'.", flagvar.dir, pkg)
+		}
+
+		debug(2, "Planning stow of %s", pkg)
+		filepath.Walk(pkgdir, func(path string, info os.FileInfo, err error) error {
+			if path == pkgdir {
+            	return nil
+			}
+			file := strings.TrimPrefix(path, pkg)
+			target := filepath.Join(flagvar.target, file)
+
+			if info.IsDir() {
+				debug(3, "**Mkdir:(%s)", target)
+				tasks = append(tasks, MkdirTask{dir: target})
+				return nil
+			}
+
+			link := filepath.Join(stowDirRel, pkg, file )
+			link = addDots(file, link)
+
+			// Prepend with .. for subfolders
+
+			debug(3, "**CreateLink:(%s) -> (%s)", target,  link)
+
+
+			tasks = append(tasks, LinkTask{target:target, link:link})
+
+			return nil
+		})
+		debug(2, "Planning stow of %s done", pkg)
     }
 
 	for _, e := range tasks {
-		log.Printf("xDel %s", e)
+		e.Print()
+	}
+
+
+	for _, e := range tasks {
+		e.Run()
 	}
 
 
