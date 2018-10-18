@@ -122,8 +122,8 @@ func main() {
     flag.BoolVar(&flagvar.help, "help",false, "Show this help")
 
 	flag.BoolVar(&flagvar.simulate, "simulate", false, "Do not actually make any file system changes")
-	flag.BoolVar(&flagvar.nofolding, "no-folding", false,
-      "Disable folding of newly stowed directories when stowing, and refolding of newly foldable directories when unstowing.")
+	flag.BoolVar(&flagvar.nofolding, "no-folding", true,
+      "Disable folding of newly stowed directories when stowing, and refolding of newly foldable directories when unstowing. (Default true, false not implemented)")
 
     flag.IntVar(&flagvar.verbose, "verbose", 0, "Set verbosity level: 0, 1, 2, 3, and 4; 0 is the default.")
 
@@ -219,12 +219,14 @@ func main() {
 
 			file := strings.TrimPrefix(path, pkg)
 			target := filepath.Join(flagvar.target, file)
+			link := filepath.Join(stowDirRel, pkg, file )
+			link = addDots(file, link)
 
 			rl, _ := os.Readlink(target)
 			debug(3, "**ReadLink:(%s) -> (%s)", target,  rl)
 
 
-			if rl == filepath.Join(stowDirRel, pkg, file ) {
+			if rl == link {
 				debug(3, "**Queuing unlink task for %s", target)
 				tasks = append(tasks, UnlinkTask{file:target})
 			}
